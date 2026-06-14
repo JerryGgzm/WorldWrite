@@ -1,0 +1,63 @@
+{
+  "manifest_version": 3,
+  "name": "WorldWrite",
+  "description": "Translate, polish & understand text inline on any site with your own AI key. Preview before replace. Private by default.",
+  "version": "0.1.0",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_title": "WorldWrite",
+    "default_popup": "src/popup/index.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "options_page": "src/options/index.html",
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content-script.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": true,
+      "match_about_blank": true
+    }
+  ],
+  "permissions": [
+    "contextMenus",
+    "storage"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "commands": {
+    "polish-selection": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+Y",
+        "mac": "Command+Shift+Y"
+      },
+      "description": "Polish the selected text"
+    },
+    "translate-selection": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+U",
+        "mac": "Command+Shift+U"
+      },
+      "description": "Translate the selected text to your writing language"
+    },
+    "translate-to-native-selection": {
+      "description": "Translate the selected text into your native language"
+    }
+  }
+}

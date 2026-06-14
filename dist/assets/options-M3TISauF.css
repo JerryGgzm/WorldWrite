@@ -1,0 +1,270 @@
+:root {
+  color-scheme: light dark;
+  --bg: #f5f6f8;
+  --card: #ffffff;
+  --border: #e1e4e8;
+  --text: #1a1a1a;
+  --muted: #6b7280;
+  --primary: #2563eb;
+  --primary-text: #ffffff;
+  --danger: #dc2626;
+  --success: #16a34a;
+  --radius: 10px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1115;
+    --card: #181b20;
+    --border: #2a2f37;
+    --text: #e6e8eb;
+    --muted: #9aa3af;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.page {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 32px 20px 80px;
+}
+
+.page h1 {
+  font-size: 22px;
+  margin: 0 0 4px;
+}
+
+.brand-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+.brand-row h1 { margin: 0; }
+.brand-logo { border-radius: 9px; flex: none; }
+
+.tagline {
+  color: var(--accent, #2563eb);
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+
+.capabilities {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 8px;
+}
+.capabilities li { line-height: 1.5; }
+
+.subtitle {
+  color: var(--muted);
+  margin: 0 0 24px;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 18px;
+}
+
+.advanced {
+  margin-top: 14px;
+  border-top: 1px dashed var(--border);
+  padding-top: 12px;
+}
+.advanced > summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted, #6b7280);
+  list-style: none;
+  user-select: none;
+}
+.advanced > summary::before {
+  content: "▸ ";
+  display: inline-block;
+}
+.advanced[open] > summary::before {
+  content: "▾ ";
+}
+.advanced > .field {
+  margin-top: 12px;
+}
+
+.card h2 {
+  font-size: 15px;
+  margin: 0 0 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.field {
+  margin-bottom: 14px;
+}
+
+.field label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 5px;
+}
+
+.field .hint {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+input[type="text"],
+input[type="password"],
+input[type="url"],
+select {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+}
+
+.row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.row > .field {
+  flex: 1;
+  min-width: 200px;
+}
+
+.inline {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+button {
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  padding: 9px 14px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+button.primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-text);
+}
+
+button.danger {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.toggle input {
+  margin-top: 3px;
+}
+
+.toggle .label {
+  font-weight: 600;
+}
+
+.status {
+  margin-top: 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.status.ok {
+  background: rgba(22, 163, 74, 0.12);
+  color: var(--success);
+}
+
+.status.err {
+  background: rgba(220, 38, 38, 0.12);
+  color: var(--danger);
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.sticky-save {
+  position: sticky;
+  bottom: 0;
+  background: var(--bg);
+  padding: 14px 0;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.privacy-banner {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.key-state {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 6px;
+}
+
+.getting-started {
+  background: linear-gradient(180deg, rgba(37, 99, 235, 0.06), transparent);
+  border-color: rgba(37, 99, 235, 0.25);
+}
+
+.steps {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.steps li {
+  padding-left: 4px;
+}
+
+a {
+  color: var(--primary);
+}

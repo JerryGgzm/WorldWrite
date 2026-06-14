@@ -1,0 +1,31 @@
+{
+  "name": "inline-ai-writing-assistant",
+  "version": "0.1.0",
+  "description": "Open-source Chrome extension that lets non-native English speakers translate, polish and rewrite text inline on any web page using their own AI API key.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/build.mjs --watch",
+    "build": "tsc --noEmit && node scripts/build.mjs",
+    "build:only": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.4.8",
+    "@types/chrome": "^0.0.270",
+    "@types/node": "^25.9.3",
+    "@types/react": "^18.3.5",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "jsdom": "^25.0.0",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.2",
+    "vitest": "^2.0.5"
+  }
+}

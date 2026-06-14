@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>WorldWrite — store screenshot stage</title>
+    <style>
+      /* ---- page reset / stage sized to Chrome Web Store screenshot ---- */
+      * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
+        background: #1e293b;
+      }
+      .stage {
+        position: relative;
+        width: 1280px;
+        height: 800px;
+        overflow: hidden;
+        background:
+          radial-gradient(1100px 600px at 18% -10%, #4f46e5 0%, rgba(79,70,229,0) 55%),
+          radial-gradient(900px 600px at 110% 120%, #0ea5e9 0%, rgba(14,165,233,0) 55%),
+          linear-gradient(135deg, #0b1220 0%, #111a30 100%);
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        padding-top: 132px;
+      }
+      /* caption strip */
+      .caption {
+        position: absolute; top: 44px; left: 0; right: 0; text-align: center;
+        color: #e2e8f0; z-index: 5; pointer-events: none;
+      }
+      .caption h1 { margin: 0; font-size: 30px; font-weight: 700; letter-spacing: -0.01em; }
+      .caption p { margin: 8px 0 0; font-size: 16px; color: #b7c2d6; font-weight: 500; }
+
+      /* ---- host-page mock (the website the user is on) ---- */
+      .host {
+        position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+      }
+      .window {
+        width: 720px; background: #ffffff; border-radius: 16px;
+        box-shadow: 0 30px 90px rgba(0,0,0,0.45);
+        overflow: hidden; color: #0f172a;
+      }
+      .win-bar { display: flex; align-items: center; gap: 8px; padding: 14px 18px; border-bottom: 1px solid #eef0f3; }
+      .dot { width: 11px; height: 11px; border-radius: 50%; }
+      .dot.r { background: #ff5f57; } .dot.y { background: #febc2e; } .dot.g { background: #28c840; }
+      .win-title { margin-left: 10px; font-size: 13px; color: #64748b; font-weight: 600; }
+      .win-body { padding: 22px 24px 26px; }
+      .field-label { font-size: 12px; color: #64748b; font-weight: 600; margin-bottom: 6px; }
+      .field {
+        border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px;
+        font-size: 15px; line-height: 1.6; color: #0f172a; min-height: 110px;
+      }
+      .field .sel { background: #b7d4ff; border-radius: 3px; padding: 0 1px; }
+      .toolbar { display: flex; gap: 8px; margin-top: 16px; }
+      .tb-btn { font-size: 13px; font-weight: 600; padding: 8px 14px; border-radius: 8px; border: 1px solid #e2e8f0; color: #475569; background: #fff; }
+      .tb-btn.primary { background: #2563eb; color: #fff; border-color: #2563eb; }
+
+      /* faux native context menu */
+      .ctx {
+        position: absolute; z-index: 6; background: #ffffff; color: #1f2937;
+        border-radius: 10px; box-shadow: 0 18px 50px rgba(0,0,0,0.35);
+        padding: 6px; width: 320px; font-size: 14px;
+        border: 1px solid #e5e7eb;
+      }
+      .ctx-root { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-radius: 7px; font-weight: 600; }
+      .ctx-root .chev { margin-left: auto; color: #9ca3af; }
+      .ctx-sub { background: #fff; border-radius: 10px; }
+      .ctx-item { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 7px; white-space: nowrap; }
+      .ctx-item:hover, .ctx-item.active { background: #eef2ff; color: #4338ca; }
+      .ctx-sep { height: 1px; background: #eceef1; margin: 6px 8px; }
+      .ctx-icn { width: 18px; text-align: center; }
+
+      /* ---------------------------------------------------------------- */
+      /* WorldWrite card — CSS copied verbatim from src/content/overlay.ts */
+      /* (only `.wrap` positioning is overridden for the static stage)     */
+      /* ---------------------------------------------------------------- */
+      .wrap {
+        position: relative;
+        width: 560px;
+        display: flex;
+        flex-direction: column;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
+        font-size: 14px;
+        line-height: 1.5;
+        color: #e5e7eb;
+        background: linear-gradient(180deg, #111827 0%, #0f172a 100%);
+        border: 1px solid rgba(148,163,184,0.16);
+        border-radius: 20px;
+        box-shadow: 0 24px 80px rgba(0,0,0,0.45), 0 4px 16px rgba(0,0,0,0.3);
+        overflow: hidden;
+        z-index: 4;
+      }
+      .header, .footer { flex: none; }
+      .header { padding: 18px 20px 14px; }
+      .brand-row { display: flex; align-items: center; justify-content: space-between; }
+      .brand { font-size: 12px; font-weight: 600; letter-spacing: .02em; color: #a5b4fc; }
+      .close { cursor: pointer; border: none; background: transparent; font-size: 18px; line-height: 1; color: #64748b; padding: 2px 6px; border-radius: 8px; }
+      .title { font-size: 21px; font-weight: 600; margin-top: 8px; color: #f8fafc; }
+      .subtitle { font-size: 13px; color: #94a3b8; margin-top: 2px; }
+      .body { padding: 4px 20px 8px; }
+      .label { font-size: 12px; font-weight: 600; color: #94a3b8; margin: 16px 0 6px; letter-spacing: .01em; }
+      .surface { border-radius: 14px; padding: 12px 14px; white-space: pre-wrap; word-break: break-word; }
+      .surface-selected { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); color: #cbd5e1; font-size: 13px; }
+      .surface-result { background: rgba(129,140,248,0.12); border: 1px solid rgba(129,140,248,0.22); color: #f1f5f9; font-size: 17px; line-height: 1.55; min-height: 24px; }
+      .surface-result.diff ins { background: rgba(34,197,94,0.22); color: #bbf7d0; text-decoration: none; border-radius: 4px; padding: 0 2px; box-shadow: inset 0 -1px 0 rgba(34,197,94,0.55); }
+      .surface-result.diff del { background: rgba(239,68,68,0.2); color: #fecaca; text-decoration: line-through; border-radius: 4px; padding: 0 2px; opacity: .85; }
+      .diff-legend { display: flex; gap: 14px; align-items: center; margin-top: 8px; font-size: 12px; color: #94a3b8; }
+      .diff-legend .add::before { content: ""; display: inline-block; width: 9px; height: 9px; border-radius: 3px; background: rgba(34,197,94,0.6); margin-right: 6px; vertical-align: -1px; }
+      .diff-legend .del::before { content: ""; display: inline-block; width: 9px; height: 9px; border-radius: 3px; background: rgba(239,68,68,0.6); margin-right: 6px; vertical-align: -1px; }
+      .changes-btn { margin-top: 8px; background: none; border: none; padding: 0; cursor: pointer; color: #94a3b8; font-size: 12px; font-weight: 600; }
+      .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+      .chip { cursor: pointer; border: none; background: rgba(255,255,255,0.06); color: #e2e8f0; height: 32px; padding: 0 14px; border-radius: 999px; font-size: 13px; font-weight: 500; }
+      .composer { display: flex; gap: 8px; margin-top: 10px; }
+      .composer input { flex: 1; height: 38px; padding: 0 13px; font-size: 14px; color: #f1f5f9; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; outline: none; }
+      .composer input::placeholder { color: #64748b; }
+      .trust { font-size: 12px; color: #64748b; margin: 16px 0 4px; display: flex; align-items: center; gap: 6px; }
+      .trust svg { flex: none; opacity: .8; }
+      .footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 14px 20px 18px; border-top: 1px solid rgba(255,255,255,0.06); }
+      .footer-left, .footer-right { display: flex; gap: 8px; }
+      .btn { cursor: pointer; border: 1px solid transparent; font-size: 14px; font-weight: 600; padding: 9px 15px; border-radius: 12px; }
+      .btn.primary { background: #6366f1; color: #fff; }
+      .btn.ghost { background: rgba(255,255,255,0.06); color: #e2e8f0; }
+      .btn.subtle { background: transparent; color: #94a3b8; }
+      .btn.send { background: #6366f1; color: #fff; height: 38px; padding: 0 16px; }
+      .send.disabled { opacity: .45; }
+    </style>
+  </head>
+  <body>
+    <div class="stage" id="stage"></div>
+
+    <script>
+      // ----- exact label data mirrored from src/shared/constants.ts -----
+      const TARGET = "English";
+      const NATIVE = "Chinese";
+
+      const TRUST_SVG =
+        '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
+      const TRUST = "Only selected text is sent. Nothing is stored.";
+
+      function card(meta, opts) {
+        const o = opts || {};
+        const tweaks = meta.incoming
+          ? ["Simpler", "Shorter", "More direct"]
+          : ["Shorter", "Warmer", "More formal", "More casual", "Simpler"];
+        const chips = tweaks
+          .map((t) => '<button class="chip">' + t + "</button>")
+          .join("");
+        const resultBody = o.diff
+          ? o.result
+          : meta.result;
+        const changes = meta.incoming
+          ? ""
+          : '<button class="changes-btn">' +
+            (o.diff ? "Hide changes" : "Show changes") +
+            "</button>" +
+            (o.diff ? o.legend : "");
+        return (
+          '<div class="wrap">' +
+          '<div class="header"><div class="brand-row">' +
+          '<span class="brand">\u2726 WorldWrite</span>' +
+          '<button class="close">\u00d7</button></div>' +
+          '<div class="title">' + meta.title + "</div>" +
+          '<div class="subtitle">' + meta.subtitle + "</div></div>" +
+          '<div class="body">' +
+          '<p class="label">' + meta.selectedLabel + "</p>" +
+          '<div class="surface surface-selected">' + meta.selected + "</div>" +
+          '<p class="label">' + meta.resultLabel + "</p>" +
+          '<div class="surface surface-result ' + (o.diff ? "diff" : "") + '">' + resultBody + "</div>" +
+          changes +
+          '<p class="label">Refine</p>' +
+          '<div class="chips">' + chips + "</div>" +
+          '<div class="composer"><input placeholder="Add a follow-up instruction\u2026" />' +
+          '<button class="btn send disabled">Send</button></div>' +
+          '<p class="trust">' + TRUST_SVG + " " + TRUST + "</p>" +
+          "</div>" +
+          '<div class="footer"><div class="footer-left">' +
+          '<button class="btn ghost">Copy</button>' +
+          '<button class="btn ghost">Regenerate</button></div>' +
+          '<div class="footer-right">' +
+          (meta.canReplace ? '<button class="btn primary">Replace</button>' : "") +
+          '<button class="btn subtle">Cancel</button></div></div>' +
+          "</div>"
+        );
+      }
+
+      const SCENES = {
+        // 1. HERO — translate your own text to English
+        translate: {
+          h: "Write in your language. Be understood anywhere.",
+          p: "Select your text, pick an action, preview \u2014 then replace.",
+          host: hostWindow(
+            "New message \u2014 mail",
+            "Message",
+            '\u6211\u60f3\u548c\u4f60\u4eec\u516c\u53f8\u5408\u4f5c\uff0c<span class="sel">\u8bf7\u95ee\u53ef\u4ee5\u5b89\u6392\u4e00\u4e2a\u7535\u8bdd\u5417\uff1f</span>'
+          ),
+          card: card({
+            title: "Translate to " + TARGET,
+            subtitle: "For text you wrote",
+            selectedLabel: "Selected text",
+            resultLabel: "Translation",
+            selected: "\u8bf7\u95ee\u53ef\u4ee5\u5b89\u6392\u4e00\u4e2a\u7535\u8bdd\u5417\uff1f",
+            result: "Would you be open to scheduling a call?",
+            incoming: false,
+            canReplace: true,
+          }),
+        },
+
+        // 2. CONTEXT MENU — the two clear sections
+        menu: {
+          h: "One right-click. Every action.",
+          p: "Clear, separate actions for writing vs. understanding.",
+          host: hostWindow(
+            "New message \u2014 mail",
+            "Message",
+            'I\u2019m really <span class="sel">excited to work with you guys</span> on this.'
+          ),
+          menu: true,
+        },
+
+        // 3. EXPLAIN — understand a received message (read-only)
+        explain: {
+          h: "Understand any message instantly.",
+          p: "Get the meaning and tone \u2014 nothing on the page changes.",
+          host: hostWindow(
+            "Chat",
+            "From: Alex",
+            'Let\u2019s circle back on this and <span class="sel">take it offline to avoid scope creep.</span>'
+          ),
+          card: card({
+            title: "Understand this message",
+            subtitle: "For a message you received",
+            selectedLabel: "Selected message",
+            resultLabel: "Meaning",
+            selected: "take it offline to avoid scope creep.",
+            result:
+              "They want to discuss it privately (not in this thread) so the project doesn\u2019t keep growing beyond its original plan.",
+            incoming: true,
+            canReplace: false,
+          }),
+        },
+
+        // 4. REFINE + DIFF — iterate with one click, see the changes
+        refine: {
+          h: "Refine in one click. See exactly what changed.",
+          p: "Quick tweaks, follow-up instructions, and a word-level diff.",
+          host: hostWindow(
+            "New message \u2014 mail",
+            "Message",
+            '<span class="sel">i think we should probably meet sometime to talk about the thing</span>'
+          ),
+          card: card(
+            {
+              title: "Polish " + TARGET,
+              subtitle: "For text you wrote",
+              selectedLabel: "Selected text",
+              resultLabel: "Suggestion",
+              selected: "i think we should probably meet sometime to talk about the thing",
+              result: "",
+              incoming: false,
+              canReplace: true,
+            },
+            {
+              diff: true,
+              result:
+                '<del>i think we should probably meet sometime to talk about the thing</del> ' +
+                '<ins>Could we schedule a short meeting to discuss the proposal?</ins>',
+              legend:
+                '<div class="diff-legend"><span class="add">8 added</span><span class="del">12 removed</span></div>',
+            }
+          ),
+        },
+      };
+
+      function hostWindow(winTitle, fieldLabel, html) {
+        return (
+          '<div class="host"><div class="window">' +
+          '<div class="win-bar"><span class="dot r"></span><span class="dot y"></span>' +
+          '<span class="dot g"></span><span class="win-title">' + winTitle + "</span></div>" +
+          '<div class="win-body"><div class="field-label">' + fieldLabel + "</div>" +
+          '<div class="field">' + html + "</div>" +
+          '<div class="toolbar"><button class="tb-btn primary">Send</button>' +
+          '<button class="tb-btn">Save draft</button></div>' +
+          "</div></div></div>"
+        );
+      }
+
+      function contextMenu() {
+        const items = [
+          { i: "\u2728", t: "Translate my text to " + TARGET, active: true },
+          { i: "\u270d\ufe0f", t: "Polish my " + TARGET },
+          { i: "\ud83d\udc54", t: "Make my " + TARGET + " more professional" },
+          { i: "\u2699\ufe0f", t: "Custom rewrite\u2026" },
+          { sep: true },
+          { i: "\ud83d\udca1", t: "Explain this message" },
+          { i: "\ud83c\udf10", t: "Translate this message to " + NATIVE },
+        ];
+        const rows = items
+          .map((it) =>
+            it.sep
+              ? '<div class="ctx-sep"></div>'
+              : '<div class="ctx-item ' +
+                (it.active ? "active" : "") +
+                '"><span class="ctx-icn">' + it.i + "</span><span>" + it.t + "</span></div>"
+          )
+          .join("");
+        return (
+          '<div class="ctx" style="left:560px; top:430px;">' +
+          '<div class="ctx-root"><span class="ctx-icn">\u2726</span><span>WorldWrite</span>' +
+          '<span class="chev">\u25b8</span></div>' +
+          '<div class="ctx-sep"></div>' +
+          '<div class="ctx-sub">' + rows + "</div></div>"
+        );
+      }
+
+      const key = (location.hash || "#translate").slice(1);
+      const scene = SCENES[key] || SCENES.translate;
+      const stage = document.getElementById("stage");
+      let html =
+        '<div class="caption"><h1>' + scene.h + "</h1><p>" + scene.p + "</p></div>" +
+        scene.host;
+      if (scene.menu) {
+        html += contextMenu();
+      } else {
+        html += scene.card;
+      }
+      stage.innerHTML = html;
+    </script>
+  </body>
+</html>

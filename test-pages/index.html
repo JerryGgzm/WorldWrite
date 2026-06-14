@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WorldWrite — Manual Test Page</title>
+    <style>
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 32px 20px 120px;
+        color: #1a1a1a;
+        line-height: 1.5;
+      }
+      h1 { font-size: 22px; }
+      h2 { font-size: 16px; margin-top: 32px; }
+      .field { margin: 12px 0; }
+      label { display: block; font-weight: 600; margin-bottom: 6px; }
+      textarea, input[type="text"], input[type="search"], input[type="email"], input[type="url"] {
+        width: 100%;
+        padding: 10px;
+        font-size: 14px;
+        border: 1px solid #ccc;
+        border-radius: 8px;
+        box-sizing: border-box;
+      }
+      textarea { min-height: 90px; }
+      .editor {
+        border: 1px solid #ccc;
+        border-radius: 8px;
+        padding: 10px;
+        min-height: 80px;
+      }
+      .hint { color: #666; font-size: 13px; }
+      .note {
+        background: #f0f7ff;
+        border: 1px solid #d6e6fb;
+        border-radius: 8px;
+        padding: 12px 14px;
+        font-size: 13px;
+      }
+      #shadow-host { margin-top: 8px; }
+    </style>
+  </head>
+  <body>
+    <h1>WorldWrite — Manual Test Page</h1>
+    <p class="note">
+      Load the unpacked extension, open this page, select some text inside any
+      field below, right-click, and choose an action from
+      <strong>WorldWrite</strong>. A preview overlay should appear and nothing
+      should change until you click <strong>Replace</strong>.
+    </p>
+
+    <h2>1. &lt;textarea&gt;</h2>
+    <div class="field">
+      <label for="ta">Textarea</label>
+      <textarea id="ta">
+我想和你们公司合作，请问可以安排一个电话吗？我对你们的产品很感兴趣。</textarea>
+      <p class="hint">Try: Translate, Polish, Make more professional.</p>
+    </div>
+
+    <h2>2. &lt;input type="text"&gt;</h2>
+    <div class="field">
+      <label for="txt">Text input</label>
+      <input id="txt" type="text" value="this sentence have some grammar mistake" />
+      <p class="hint">Try: Fix grammar only.</p>
+    </div>
+
+    <h2>3. &lt;input type="search"&gt;</h2>
+    <div class="field">
+      <label for="srch">Search input</label>
+      <input id="srch" type="search" value="make this more concise please thanks a lot" />
+    </div>
+
+    <h2>4. &lt;input type="email"&gt; / url</h2>
+    <div class="field">
+      <input type="email" value="hello can you please review my application" />
+    </div>
+
+    <h2>5. contenteditable="true"</h2>
+    <div class="field">
+      <label>Basic contenteditable</label>
+      <div class="editor" contenteditable="true">
+        Hey team, I just want to quickly let you know that the deploy is done and
+        everything looks good on my side, lmk if you see anything weird.
+      </div>
+      <p class="hint">Try: Make more concise, Custom instruction.</p>
+    </div>
+
+    <h2>6. Rich-text-ish contenteditable (nested markup)</h2>
+    <div class="field">
+      <div class="editor" contenteditable="true">
+        <p>Dear hiring manager,</p>
+        <p>
+          I am <b>writing</b> to <i>express</i> my interest in the role. I think
+          I am a good fit becuase of my experiences.
+        </p>
+      </div>
+    </div>
+
+    <h2>7. Shadow DOM input</h2>
+    <div id="shadow-host"></div>
+
+    <script>
+      // An open shadow root hosting an editable field, to exercise the
+      // shadow-aware selection handling.
+      const host = document.getElementById("shadow-host");
+      const root = host.attachShadow({ mode: "open" });
+      root.innerHTML = `
+        <style>
+          .box { border: 1px dashed #999; border-radius: 8px; padding: 10px; }
+          textarea { width: 100%; box-sizing: border-box; min-height: 70px; }
+        </style>
+        <div class="box">
+          <p style="margin:0 0 6px;font-weight:600;">Shadow DOM textarea</p>
+          <textarea>Text inside an open shadow root. Select me and rewrite.</textarea>
+        </div>`;
+    </script>
+  </body>
+</html>
