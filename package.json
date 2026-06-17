@@ -1,6 +1,6 @@
 {
   "name": "inline-ai-writing-assistant",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Open-source Chrome extension that lets non-native English speakers translate, polish and rewrite text inline on any web page using their own AI API key.",
   "license": "MIT",
   "type": "module",

@@ -35,10 +35,15 @@ export class SelectionManager {
    * is non-empty, in-bounds selected text.
    */
   capture(): CaptureResult {
-    const target =
-      this.lastTarget ?? getDeepActiveElement() ?? document.activeElement;
+    const deepActive = getDeepActiveElement();
+    const target = this.lastTarget ?? deepActive ?? document.activeElement;
 
-    const adapter = createAdapterForTarget(target);
+    // Pass the deepest focused element as an extra candidate: the clicked
+    // target may be a shadow host that isn't itself editable (e.g. LinkedIn).
+    const adapter = createAdapterForTarget(target, [
+      deepActive,
+      document.activeElement,
+    ]);
     if (!adapter) {
       // Distinguish "nothing selected" from "editable but unsupported".
       const sel = window.getSelection();

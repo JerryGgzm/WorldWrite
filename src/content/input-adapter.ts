@@ -165,10 +165,107 @@ function tryExecInsert(text: string): boolean {
 
 // ---- contenteditable -----------------------------------------------------
 
+/**
+ * Climbs to the outermost contenteditable ancestor (the editing root). Rich
+ * editors (LinkedIn/Quill, Reddit/Lexical) rebuild the inner block/inline nodes
+ * on every render, but this root element stays attached — so it is the only
+ * stable anchor for relocating a selection between capture and replace.
+ */
+function editingRoot(el: HTMLElement): HTMLElement {
+  let root = el;
+  let parent = el.parentElement;
+  while (parent && parent.isContentEditable) {
+    root = parent;
+    parent = parent.parentElement;
+  }
+  return root;
+}
+
+// Length-preserving whitespace normalisation (e.g. nbsp -> space) so a
+// selection still matches after an editor swaps spaces for &nbsp; on render.
+const NORMALISE_WS_RE = /[\u00a0\u2000-\u200a\u202f\u205f\u3000]/g;
+function normaliseWs(s: string): string {
+  return s.replace(NORMALISE_WS_RE, " ");
+}
+
+/** Concatenated text-node data of `host` (same basis as Range.toString()). */
+function rawText(host: Node): string {
+  const walker = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
+  let out = "";
+  let node = walker.nextNode();
+  while (node) {
+    out += (node as Text).data;
+    node = walker.nextNode();
+  }
+  return out;
+}
+
+/**
+ * Character offset of a boundary point (container, offset) measured from the
+ * start of `host`'s text content. Using Range.toString().length handles both
+ * text-node and element containers uniformly.
+ */
+function offsetOfPoint(
+  host: Node,
+  container: Node,
+  offset: number,
+): number | null {
+  try {
+    const r = document.createRange();
+    r.selectNodeContents(host);
+    r.setEnd(container, offset);
+    return r.toString().length;
+  } catch {
+    return null;
+  }
+}
+
+/** Resolves an absolute text offset within `host` back to a (textNode, offset). */
+function pointFromOffset(
+  host: Node,
+  target: number,
+): { node: Text; offset: number } | null {
+  const walker = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
+  let remaining = target;
+  let last: Text | null = null;
+  let node = walker.nextNode() as Text | null;
+  while (node) {
+    last = node;
+    const len = node.data.length;
+    if (remaining <= len) return { node, offset: remaining };
+    remaining -= len;
+    node = walker.nextNode() as Text | null;
+  }
+  // Allow a position at the very end of the last text node.
+  if (last && remaining === 0) return { node: last, offset: last.data.length };
+  return null;
+}
+
+/** Rebuilds a Range from absolute character offsets against the live DOM. */
+function rangeFromOffsets(
+  host: Node,
+  start: number,
+  end: number,
+): Range | null {
+  const s = pointFromOffset(host, start);
+  const e = pointFromOffset(host, end);
+  if (!s || !e) return null;
+  try {
+    const r = document.createRange();
+    r.setStart(s.node, s.offset);
+    r.setEnd(e.node, e.offset);
+    return r;
+  } catch {
+    return null;
+  }
+}
+
 export class ContentEditableAdapter implements InputAdapter {
   private host: HTMLElement | null = null;
   private range: Range | null = null;
   private originalText = "";
+  private startOffset: number | null = null;
+  private endOffset: number | null = null;
   private undoRange: Range | null = null;
   private undoText = "";
 
@@ -182,9 +279,20 @@ export class ContentEditableAdapter implements InputAdapter {
     if (!selection || selection.rangeCount === 0) return false;
     const range = selection.getRangeAt(0);
     if (range.collapsed) return false;
-    this.host = target;
+    // Anchor to the editing root, not the clicked descendant — rich editors
+    // replace inner nodes on render, but the root stays attached.
+    const root = editingRoot(target);
+    this.host = root;
     this.range = range.cloneRange();
     this.originalText = range.toString();
+    // Remember the selection as character offsets within the root so we can
+    // relocate it even after the editor rebuilds its inner nodes.
+    this.startOffset = offsetOfPoint(
+      root,
+      range.startContainer,
+      range.startOffset,
+    );
+    this.endOffset = offsetOfPoint(root, range.endContainer, range.endOffset);
     return this.originalText.length > 0;
   }
 
@@ -192,32 +300,71 @@ export class ContentEditableAdapter implements InputAdapter {
     return this.originalText || null;
   }
 
-  private stillValid(): boolean {
-    if (!this.range || !this.host) return false;
-    // The cloned range becomes invalid if its boundary nodes left the DOM.
+  /**
+   * Returns a usable Range that still spans the originally selected text.
+   * Tries, in order: the live cloned range, the stored character offsets
+   * (tolerating whitespace normalisation), and an unambiguous text search.
+   * This survives rich editors (LinkedIn/Quill, Reddit/Lexical, Gmail) that
+   * swap their underlying nodes — or whitespace — between capture and replace.
+   */
+  private resolveRange(): Range | null {
+    const host = this.host;
+    // Never operate on a detached root: that would silently edit nothing.
+    if (!host || !host.isConnected) return null;
+
+    // 1. The original cloned range, if still attached and exact.
     if (
-      !this.host.contains(this.range.startContainer) ||
-      !this.host.contains(this.range.endContainer)
+      this.range &&
+      host.contains(this.range.startContainer) &&
+      host.contains(this.range.endContainer) &&
+      this.range.toString() === this.originalText
     ) {
-      return false;
+      return this.range;
     }
-    return this.range.toString() === this.originalText;
+
+    const raw = rawText(host);
+    const target = this.originalText;
+
+    // 2. Same character offsets, tolerating whitespace normalisation (nbsp etc.).
+    if (this.startOffset != null && this.endOffset != null) {
+      const slice = raw.slice(this.startOffset, this.endOffset);
+      if (slice === target || normaliseWs(slice) === normaliseWs(target)) {
+        const r = rangeFromOffsets(host, this.startOffset, this.endOffset);
+        if (r) return r;
+      }
+    }
+
+    // 3. Unambiguous text search. normaliseWs is length-preserving, so indices
+    //    map 1:1 onto the raw text used by rangeFromOffsets.
+    const nRaw = normaliseWs(raw);
+    const nTarget = normaliseWs(target);
+    if (nTarget.length > 0) {
+      const idx = nRaw.indexOf(nTarget);
+      if (idx !== -1 && idx === nRaw.lastIndexOf(nTarget)) {
+        const r = rangeFromOffsets(host, idx, idx + nTarget.length);
+        if (r) return r;
+      }
+    }
+
+    return null;
   }
 
   replaceSelectedText(newText: string): boolean {
-    if (!this.range || !this.host || !this.stillValid()) return false;
+    if (!this.host) return false;
+    const range = this.resolveRange();
+    if (!range) return false;
     const selection = getActiveSelection(this.host);
     if (!selection) return false;
 
     this.host.focus();
     selection.removeAllRanges();
-    selection.addRange(this.range);
+    selection.addRange(range);
 
     const inserted = tryExecInsert(newText);
     if (!inserted) {
-      this.range.deleteContents();
+      range.deleteContents();
       const node = document.createTextNode(newText);
-      this.range.insertNode(node);
+      range.insertNode(node);
       // Move caret to the end of the inserted node.
       const after = document.createRange();
       after.setStartAfter(node);
@@ -227,10 +374,14 @@ export class ContentEditableAdapter implements InputAdapter {
     }
     dispatchInput(this.host, newText);
 
-    // Record an undo range covering the inserted text.
+    // Record an undo range covering the inserted text. The original clone is
+    // now stale, so drop it to avoid reusing detached nodes.
     const current = selection.getRangeAt(0).cloneRange();
     this.undoRange = current;
     this.undoText = this.originalText;
+    this.range = null;
+    this.startOffset = null;
+    this.endOffset = null;
     return true;
   }
 
@@ -263,7 +414,6 @@ export class ContentEditableAdapter implements InputAdapter {
  */
 export class FallbackSelectionAdapter implements InputAdapter {
   private text = "";
-  private editable = false;
   private range: Range | null = null;
 
   canHandle(_target: EventTarget | null): boolean {
@@ -271,16 +421,11 @@ export class FallbackSelectionAdapter implements InputAdapter {
     return Boolean(sel && sel.toString().trim().length > 0);
   }
 
-  capture(target: EventTarget | null): boolean {
+  capture(_target: EventTarget | null): boolean {
     const sel = window.getSelection();
     if (!sel || sel.rangeCount === 0) return false;
     this.text = sel.toString();
     this.range = sel.getRangeAt(0).cloneRange();
-    const node =
-      target instanceof Node ? target : sel.anchorNode ?? null;
-    const host =
-      node instanceof HTMLElement ? node : node?.parentElement ?? null;
-    this.editable = Boolean(host && host.isContentEditable);
     return this.text.trim().length > 0;
   }
 
@@ -289,12 +434,32 @@ export class FallbackSelectionAdapter implements InputAdapter {
   }
 
   replaceSelectedText(newText: string): boolean {
-    if (!this.editable || !this.range) return false;
     const sel = window.getSelection();
     if (!sel) return false;
+
+    // Re-assert our captured range if the live selection drifted.
+    if (sel.toString() !== this.text && this.range) {
+      try {
+        sel.removeAllRanges();
+        sel.addRange(this.range);
+      } catch {
+        /* range may reference detached nodes; ignore */
+      }
+    }
     if (sel.toString() !== this.text) return false;
-    const ok = tryExecInsert(newText);
-    return ok;
+
+    // Best-effort: focus the deepest editable so execCommand targets it. Many
+    // sites (e.g. LinkedIn) keep the editor focused while our overlay is open
+    // because the overlay buttons aren't focusable.
+    const active = getDeepActiveElement();
+    if (active instanceof HTMLElement && active.isContentEditable) {
+      active.focus();
+    }
+
+    // execCommand inserts into the focused editing host and works through shadow
+    // DOM and rich editors (Quill/Lexical). Its return value is itself the
+    // editability check, so we no longer need a brittle isContentEditable gate.
+    return tryExecInsert(newText);
   }
 }
 
@@ -329,22 +494,47 @@ export function getActiveSelection(el: HTMLElement): Selection | null {
   return window.getSelection();
 }
 
+type CapturingAdapter = InputAdapter & {
+  capture(t: EventTarget | null): boolean;
+};
+
 /**
- * Picks the best adapter for the given target and captures the current
- * selection. Returns null when nothing can be captured.
+ * Picks the best adapter for the selection. The clicked target may not itself
+ * be the editable element — e.g. on sites that host their editor in a shadow
+ * tree, a right-click retargets to the shadow host. So we try the strict
+ * editable adapters across several candidate targets (clicked element, deepest
+ * focused element) before falling back to the selection-only adapter.
  */
 export function createAdapterForTarget(
   target: EventTarget | null,
-): (InputAdapter & { capture(t: EventTarget | null): boolean }) | null {
-  const candidates = [
-    new TextareaAdapter(),
-    new ContentEditableAdapter(),
-    new FallbackSelectionAdapter(),
-  ];
-  for (const adapter of candidates) {
-    if (adapter.canHandle(target) && adapter.capture(target)) {
-      return adapter;
+  extraCandidates: (EventTarget | null)[] = [],
+): CapturingAdapter | null {
+  const seen = new Set<EventTarget>();
+  const candidates = [target, ...extraCandidates].filter((c): c is EventTarget => {
+    if (!c || seen.has(c)) return false;
+    seen.add(c);
+    return true;
+  });
+
+  // 1. Strict editable adapters (textarea/input, contenteditable) first, across
+  //    every candidate. These give precise, reversible replacement.
+  for (const candidate of candidates) {
+    for (const adapter of [
+      new TextareaAdapter(),
+      new ContentEditableAdapter(),
+    ] as CapturingAdapter[]) {
+      if (adapter.canHandle(candidate) && adapter.capture(candidate)) {
+        return adapter;
+      }
     }
+  }
+
+  // 2. Selection-only fallback: handles editors we couldn't pin to an element
+  //    (e.g. closed shadow roots) but whose live selection we can still edit.
+  const fallback = new FallbackSelectionAdapter();
+  const fbTarget = candidates[0] ?? target;
+  if (fallback.canHandle(fbTarget) && fallback.capture(fbTarget)) {
+    return fallback;
   }
   return null;
 }

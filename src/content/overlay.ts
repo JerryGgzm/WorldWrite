@@ -262,6 +262,26 @@ export class Overlay {
     wrap.className = "wrap";
     this.root.appendChild(wrap);
 
+    // Keep interactions inside the overlay from reaching the host page's global
+    // handlers. Without this, sites like LinkedIn/Reddit treat keystrokes typed
+    // in our follow-up box as page shortcuts (swallowing letters, scrolling the
+    // page on Space) and may steal focus back to their own editor. Bubble-phase
+    // only, so our own inputs, buttons, and the document-level Esc/Cmd+Enter
+    // handler (capture phase) all keep working.
+    const stopProp = (e: Event) => e.stopPropagation();
+    for (const type of [
+      "keydown",
+      "keypress",
+      "keyup",
+      "mousedown",
+      "mouseup",
+      "pointerdown",
+      "pointerup",
+      "click",
+    ]) {
+      wrap.addEventListener(type, stopProp);
+    }
+
     (document.body ?? document.documentElement).appendChild(host);
     this.hostEl = host;
 

@@ -204,10 +204,73 @@
       return false;
     }
   }
+  function editingRoot(el) {
+    let root = el;
+    let parent = el.parentElement;
+    while (parent && parent.isContentEditable) {
+      root = parent;
+      parent = parent.parentElement;
+    }
+    return root;
+  }
+  const NORMALISE_WS_RE = /[\u00a0\u2000-\u200a\u202f\u205f\u3000]/g;
+  function normaliseWs(s) {
+    return s.replace(NORMALISE_WS_RE, " ");
+  }
+  function rawText(host) {
+    const walker = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
+    let out = "";
+    let node = walker.nextNode();
+    while (node) {
+      out += node.data;
+      node = walker.nextNode();
+    }
+    return out;
+  }
+  function offsetOfPoint(host, container, offset) {
+    try {
+      const r = document.createRange();
+      r.selectNodeContents(host);
+      r.setEnd(container, offset);
+      return r.toString().length;
+    } catch {
+      return null;
+    }
+  }
+  function pointFromOffset(host, target) {
+    const walker = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
+    let remaining = target;
+    let last = null;
+    let node = walker.nextNode();
+    while (node) {
+      last = node;
+      const len = node.data.length;
+      if (remaining <= len) return { node, offset: remaining };
+      remaining -= len;
+      node = walker.nextNode();
+    }
+    if (last && remaining === 0) return { node: last, offset: last.data.length };
+    return null;
+  }
+  function rangeFromOffsets(host, start, end) {
+    const s = pointFromOffset(host, start);
+    const e = pointFromOffset(host, end);
+    if (!s || !e) return null;
+    try {
+      const r = document.createRange();
+      r.setStart(s.node, s.offset);
+      r.setEnd(e.node, e.offset);
+      return r;
+    } catch {
+      return null;
+    }
+  }
   class ContentEditableAdapter {
     host = null;
     range = null;
     originalText = "";
+    startOffset = null;
+    endOffset = null;
     undoRange = null;
     undoText = "";
     canHandle(target) {
@@ -219,33 +282,68 @@
       if (!selection || selection.rangeCount === 0) return false;
       const range = selection.getRangeAt(0);
       if (range.collapsed) return false;
-      this.host = target;
+      const root = editingRoot(target);
+      this.host = root;
       this.range = range.cloneRange();
       this.originalText = range.toString();
+      this.startOffset = offsetOfPoint(
+        root,
+        range.startContainer,
+        range.startOffset
+      );
+      this.endOffset = offsetOfPoint(root, range.endContainer, range.endOffset);
       return this.originalText.length > 0;
     }
     getSelectedText() {
       return this.originalText || null;
     }
-    stillValid() {
-      if (!this.range || !this.host) return false;
-      if (!this.host.contains(this.range.startContainer) || !this.host.contains(this.range.endContainer)) {
-        return false;
+    /**
+     * Returns a usable Range that still spans the originally selected text.
+     * Tries, in order: the live cloned range, the stored character offsets
+     * (tolerating whitespace normalisation), and an unambiguous text search.
+     * This survives rich editors (LinkedIn/Quill, Reddit/Lexical, Gmail) that
+     * swap their underlying nodes — or whitespace — between capture and replace.
+     */
+    resolveRange() {
+      const host = this.host;
+      if (!host || !host.isConnected) return null;
+      if (this.range && host.contains(this.range.startContainer) && host.contains(this.range.endContainer) && this.range.toString() === this.originalText) {
+        return this.range;
       }
-      return this.range.toString() === this.originalText;
+      const raw = rawText(host);
+      const target = this.originalText;
+      if (this.startOffset != null && this.endOffset != null) {
+        const slice = raw.slice(this.startOffset, this.endOffset);
+        if (slice === target || normaliseWs(slice) === normaliseWs(target)) {
+          const r = rangeFromOffsets(host, this.startOffset, this.endOffset);
+          if (r) return r;
+        }
+      }
+      const nRaw = normaliseWs(raw);
+      const nTarget = normaliseWs(target);
+      if (nTarget.length > 0) {
+        const idx = nRaw.indexOf(nTarget);
+        if (idx !== -1 && idx === nRaw.lastIndexOf(nTarget)) {
+          const r = rangeFromOffsets(host, idx, idx + nTarget.length);
+          if (r) return r;
+        }
+      }
+      return null;
     }
     replaceSelectedText(newText) {
-      if (!this.range || !this.host || !this.stillValid()) return false;
+      if (!this.host) return false;
+      const range = this.resolveRange();
+      if (!range) return false;
       const selection = getActiveSelection(this.host);
       if (!selection) return false;
       this.host.focus();
       selection.removeAllRanges();
-      selection.addRange(this.range);
+      selection.addRange(range);
       const inserted = tryExecInsert(newText);
       if (!inserted) {
-        this.range.deleteContents();
+        range.deleteContents();
         const node = document.createTextNode(newText);
-        this.range.insertNode(node);
+        range.insertNode(node);
         const after = document.createRange();
         after.setStartAfter(node);
         after.collapse(true);
@@ -256,6 +354,9 @@
       const current = selection.getRangeAt(0).cloneRange();
       this.undoRange = current;
       this.undoText = this.originalText;
+      this.range = null;
+      this.startOffset = null;
+      this.endOffset = null;
       return true;
     }
     restoreOriginalText() {
@@ -276,32 +377,37 @@
   }
   class FallbackSelectionAdapter {
     text = "";
-    editable = false;
     range = null;
     canHandle(_target) {
       const sel = window.getSelection();
       return Boolean(sel && sel.toString().trim().length > 0);
     }
-    capture(target) {
+    capture(_target) {
       const sel = window.getSelection();
       if (!sel || sel.rangeCount === 0) return false;
       this.text = sel.toString();
       this.range = sel.getRangeAt(0).cloneRange();
-      const node = target instanceof Node ? target : sel.anchorNode ?? null;
-      const host = node instanceof HTMLElement ? node : node?.parentElement ?? null;
-      this.editable = Boolean(host && host.isContentEditable);
       return this.text.trim().length > 0;
     }
     getSelectedText() {
       return this.text || null;
     }
     replaceSelectedText(newText) {
-      if (!this.editable || !this.range) return false;
       const sel = window.getSelection();
       if (!sel) return false;
+      if (sel.toString() !== this.text && this.range) {
+        try {
+          sel.removeAllRanges();
+          sel.addRange(this.range);
+        } catch {
+        }
+      }
       if (sel.toString() !== this.text) return false;
-      const ok = tryExecInsert(newText);
-      return ok;
+      const active = getDeepActiveElement();
+      if (active instanceof HTMLElement && active.isContentEditable) {
+        active.focus();
+      }
+      return tryExecInsert(newText);
     }
   }
   function getDeepActiveElement(root = document) {
@@ -322,16 +428,27 @@
     }
     return window.getSelection();
   }
-  function createAdapterForTarget(target) {
-    const candidates = [
-      new TextareaAdapter(),
-      new ContentEditableAdapter(),
-      new FallbackSelectionAdapter()
-    ];
-    for (const adapter of candidates) {
-      if (adapter.canHandle(target) && adapter.capture(target)) {
-        return adapter;
+  function createAdapterForTarget(target, extraCandidates = []) {
+    const seen = /* @__PURE__ */ new Set();
+    const candidates = [target, ...extraCandidates].filter((c) => {
+      if (!c || seen.has(c)) return false;
+      seen.add(c);
+      return true;
+    });
+    for (const candidate of candidates) {
+      for (const adapter of [
+        new TextareaAdapter(),
+        new ContentEditableAdapter()
+      ]) {
+        if (adapter.canHandle(candidate) && adapter.capture(candidate)) {
+          return adapter;
+        }
       }
+    }
+    const fallback = new FallbackSelectionAdapter();
+    const fbTarget = candidates[0] ?? target;
+    if (fallback.canHandle(fbTarget) && fallback.capture(fbTarget)) {
+      return fallback;
     }
     return null;
   }
@@ -347,8 +464,12 @@
      * is non-empty, in-bounds selected text.
      */
     capture() {
-      const target = this.lastTarget ?? getDeepActiveElement() ?? document.activeElement;
-      const adapter = createAdapterForTarget(target);
+      const deepActive = getDeepActiveElement();
+      const target = this.lastTarget ?? deepActive ?? document.activeElement;
+      const adapter = createAdapterForTarget(target, [
+        deepActive,
+        document.activeElement
+      ]);
       if (!adapter) {
         const sel = window.getSelection();
         if (!sel || sel.toString().trim().length === 0) {
@@ -635,6 +756,19 @@
       const wrap = document.createElement("div");
       wrap.className = "wrap";
       this.root.appendChild(wrap);
+      const stopProp = (e) => e.stopPropagation();
+      for (const type of [
+        "keydown",
+        "keypress",
+        "keyup",
+        "mousedown",
+        "mouseup",
+        "pointerdown",
+        "pointerup",
+        "click"
+      ]) {
+        wrap.addEventListener(type, stopProp);
+      }
       (document.body ?? document.documentElement).appendChild(host);
       this.hostEl = host;
       this.position(anchorRect);
